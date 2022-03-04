@@ -1,7 +1,7 @@
 #!/bin/bash
 for integ in 'Clin+mRNA' 'CNA+mRNA' 'Clin+CNA'
 do
-    for lsize in 16 64
+    for lsize in 16 32
     do
         for distance in 'kl' #'mmd'
         do
@@ -9,11 +9,11 @@ do
             do
                 for dtype in  'W' #whole data
                 do
-                    for k in 10 30 60
+                    for k in 20
                     do
                         for epochs in 1500
                         do
-                            python run_gcncvae.py --integration=${integ}  --epochs=${epochs} --dtype=${dtype}  --ls=${lsize} --distance=${distance} --beta=${beta} --k=${k} --writedir='results'
+                            python run_infomax.py --integration=${integ}  --epochs=${epochs} --dtype=${dtype}  --ls=${lsize} --distance=${distance} --beta=${beta} --k=${k} --writedir='results'
                         done
                     done
                 done

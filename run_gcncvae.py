@@ -3,7 +3,7 @@ import argparse
 import torch
 import torch_geometric
 import torch_geometric.transforms as T
-from torch_geometric.nn import VGAE
+from torch_geometric.nn import VGAE, GAE
 
 from misc.dataset import DatasetWhole
 from misc.helpers import normalizeRNA, save_embedding
@@ -58,7 +58,7 @@ data_split, data = buildGraph(conc_input, args.k, device)
 train_data, val_data, test_data = data_split
 in_channels, out_channels = data.num_features, args.ls
 
-model = VGAE(CNCGVAE(in_channels, out_channels))
+model = GAE(CNCGVAE(in_channels, out_channels))
 model = model.to(device)
 train_pos_edge_index = train_data.pos_edge_label_index.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
