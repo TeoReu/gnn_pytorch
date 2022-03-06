@@ -114,7 +114,7 @@ def buildGraph(conc_input, k, device):
     transform = T.Compose([
         T.NormalizeFeatures(),
         T.ToDevice(device),
-        T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
+        T.RandomLinkSplit(num_test=0.2, is_undirected=True,
                           split_labels=True, add_negative_train_samples=True),
     ])
 
@@ -131,9 +131,7 @@ def buildGraph(conc_input, k, device):
 
 def buildGraph(conc_input, k):
     transform = T.Compose([
-        T.NormalizeFeatures(),
-        T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
-                          split_labels=True, add_negative_train_samples=True),
+        T.NormalizeFeatures()
     ])
 
     data = torch_geometric.data.Data(pos=conc_input, dtype=torch.float)
@@ -142,15 +140,15 @@ def buildGraph(conc_input, k):
 
     data = torch_geometric.data.Data(x=conc_input, edge_index=edge_index, pos=conc_input, dtype=torch.float)
 
-    data_split = transform(data)
+    #data_split = transform(data)
 
-    return data_split, data
+    return data
 
 
 def build_simplex(g1, g2):
     transform = T.Compose([
         T.NormalizeFeatures(),
-        T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
+        T.RandomLinkSplit(num_test=0.1, is_undirected=True,
                           split_labels=True, add_negative_train_samples=True),
     ])
     t1 = torch.zeros(g2.x.shape)

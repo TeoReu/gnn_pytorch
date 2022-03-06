@@ -2,66 +2,98 @@ import argparse
 import os
 
 import numpy as np
+import pandas as pd
 import torch
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
 from torch_geometric import nn
 from torch import nn
-from misc.dataset import DatasetWhole
+from misc.dataset import DatasetWhole, Dataset
 from misc.helpers import normalizeRNA, save_embedding
 from models.infomax import DGI
-from utils import buildGraph
-
+from models.logreg import LogReg
+from utils import buildGraph, build_simplex
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--integration', help='Type of integration Clin+mRNA, CNA+mRNA or Clin+CNA', type=str,
                     required=True, default='Clin+mRNA')
 parser.add_argument('--save_model', help='Saves the weights of the model', action='store_true')
-parser.add_argument('--fold', help='The fold to train on, if 0 will train on the whole data set', type=str, default='0')
-parser.add_argument('--dtype', help='The type of data (Pam50, Pam50C, IC, ER)', type=str, default='W')
-parser.add_argument('--beta', help='beta size', type=int, default=0.5)
-parser.add_argument('--distance', help='regularization', type=str, default='mmd')
+parser.add_argument('--fold', help='The fold to train on, if 0 will train on the whole data set', type=int, default=1)
+parser.add_argument('--dtype', help='The type of data (Pam50, Pam50C, IC, ER)', type=str, default='ER')
 parser.add_argument('--ls', help='latent dimension size', type=int, required=True)
 parser.add_argument('--writedir', help='/PATH/TO/OUTPUT - Default is current dir', type=str, default='')
 parser.add_argument('--k', help='knn', type=int, required=True)
 parser.add_argument('--epochs', help='epochs', type=int, required=True)
-
+parser.add_argument('--graph_type', help='The type of the graph: simple or simplex', type=str, default='simple')
 if __name__ == "__main__":
     args = parser.parse_args()
 
-
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-dataset = DatasetWhole('W')
 
 # parameters
 out_channels = args.ls
 epochs = args.epochs
-patience = 1000
+patience = 1000000
 
 # model
 
 # move to GPU (if available)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if args.fold == 0:
+    dataset = DatasetWhole('W')
 
-if args.integration == 'Clin+mRNA':  # integrate Clin+mRNA
-    s1_train = dataset.train['clin']
-    s2_train = normalizeRNA(dataset.train['rnanp'])
+    if args.integration == 'Clin+mRNA':  # integrate Clin+mRNA
+        s1_data = dataset.train['clin']
+        s2_data = normalizeRNA(dataset.train['rnanp'])
 
-elif args.integration == 'Clin+CNA':  # integrate Clin+CNA
-    s1_train = dataset.train['clin']
-    s2_train = dataset.train['cnanp']
+    elif args.integration == 'Clin+CNA':  # integrate Clin+CNA
+        s1_data = dataset.train['clin']
+        s2_data = dataset.train['cnanp']
+
+    else:
+        s1_data = dataset.train['cnanp']  # integrate CNA+mRNA
+        s2_data = normalizeRNA(dataset.train['rnanp'])
 
 else:
-    s1_train = dataset.train['cnanp']  # integrate CNA+mRNA
-    s2_train = normalizeRNA(dataset.train['rnanp'])
+    print('TRAINING on the fold '+ format(args.fold))
 
-conc_input = torch.cat((torch.from_numpy(s1_train), torch.from_numpy(s2_train)), -1)
+    dataset = Dataset(args.dtype, str(args.fold))
 
-data_split, data = buildGraph(conc_input, args.k)
-train_data, val_data, test_data = data_split
+    if (args.integration == 'Clin+mRNA'):  # integrate Clin+mRNA
+        s1_data_train = dataset.train['clin']
+        s1_data_test = dataset.test['clin']
+        s2_data_train = dataset.train['rnanp']
+        s2_data_test = dataset.test['rnanp']
+    elif (args.integration == 'Clin+CNA'):  # integrate Clin+CNA
+        s1_data_train = dataset.train['clin']
+        s1_data_test = dataset.test['clin']
+        s2_data_train = dataset.train['cnanp']
+        s2_data_test = dataset.test['cnanp']
 
-num_features = data.num_features
+
+    else:  # integrate CNA+mRNA
+        s1_data_train = dataset.train['cnanp']
+        s1_data_test = dataset.test['cnanp']
+        s2_data_train = dataset.train['rnanp']
+        s2_data_test = dataset.test['rnanp']
+
+if(args.graph_type == 'simple'):
+    conc_train= torch.cat((torch.from_numpy(s1_data_train), torch.from_numpy(s2_data_train)), -1)
+    conc_test = torch.cat((torch.from_numpy(s1_data_test), torch.from_numpy(s2_data_test)), -1)
+    train_data = buildGraph(conc_train, args.k)
+    test_data = buildGraph(conc_test, args.k)
+
+else:
+    _, data1 = buildGraph(torch.from_numpy(s1_data), args.k)
+    _, data2 = buildGraph(torch.from_numpy(s2_data), args.k)
+
+    data_split, data = build_simplex(data1, data2)
 
 
+
+
+num_features = train_data.num_features
 
 model = DGI(num_features, out_channels)
 b_xent = nn.BCEWithLogitsLoss()
@@ -71,29 +103,27 @@ cnt_wait = 0
 best = 1e9
 best_t = 0
 
-x = data.x
-train_pos_edge_index = train_data.pos_edge_label_index
+x = train_data.x
 
 # inizialize the optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-nb_epochs = 1000
+#nb_epochs = 100
 
-for epoch in range(nb_epochs):
+for epoch in range(epochs):
     model.train()
     optimizer.zero_grad()
-    idx = np.random.permutation(data.num_nodes)
+    idx = np.random.permutation(train_data.num_nodes)
     shuf_fts = x[idx, :]
 
-    lbl_1 = torch.ones(data.num_nodes, 1)
-    lbl_2 = torch.zeros(data.num_nodes, 1)
+    lbl_1 = torch.ones(train_data.num_nodes, 1)
+    lbl_2 = torch.zeros(train_data.num_nodes, 1)
     lbl = torch.cat((lbl_1, lbl_2), 1)
 
-    logits = model(data.x, shuf_fts, train_pos_edge_index, None, None, None)
+    logits = model(train_data.x, shuf_fts, train_data.edge_index, None, None, None)
 
     loss = b_xent(logits, lbl)
 
-    print('Loss:', loss)
-
+    #print('Loss:', loss)
 
     if loss < best:
         best = loss
@@ -110,58 +140,56 @@ for epoch in range(nb_epochs):
     loss.backward()
     optimizer.step()
 
-
 print('Loading {}th epoch'.format(best_t))
-#model.load_state_dict(torch.load('best_dgi.pkl'))
 
-#embeds, _ = model.embed(data.x, edge_index=train_pos_edge_index)
+model.load_state_dict(torch.load('best_dgi.pkl'))
 
+# embeds, _ = model.embed(data.x, edge_index=train_pos_edge_index)
 
-emb_train = model.embed(train_data.x, train_data.edge_index,None)
+emb_train = model.embed(train_data.x, train_data.edge_index, None)
+emb_test = model.embed(test_data.x, test_data.edge_index, None)
 
 if args.writedir == '':
-    emb_save_dir = 'results/infomax_' + format(args.integration) + '_integration/infomax_LS_' + format(
-        args.ls) + '_K_' + format(args.k) + '_' + format(args.distance) + '_beta_' + format(args.beta) + '_epochs_' + format(args.epochs)
+    emb_save_dir = 'results/infomax_' + format(args.graph_type) + "_" + format(args.integration) + '_integration/infomax_LS_' + format(
+        args.ls) + '_K_' + format(args.k) + '_epochs_' + format(args.epochs)
 else:
-    emb_save_dir = args.writedir + '/infomax_' + format(args.integration) + '_integration/infomax_LS_' + format(
-        args.ls) + '_K_' + format(args.k) + '_' + format(args.distance) + '_beta_' + format(args.beta) + '_epochs_' + format(args.epochs)
+    emb_save_dir = args.writedir + '/infomax_' + format(args.graph_type) + "_" + format(args.integration) + '_integration/infomax_LS_' + format(
+        args.ls) + '_K_' + format(args.k) + '_epochs_' + format(args.epochs)
 if not os.path.exists(emb_save_dir):
     os.makedirs(emb_save_dir)
-emb_save_file = args.dtype + '.npz'
-save_embedding(emb_save_dir, emb_save_file, emb_train.detach())
+emb_save_file = args.dtype + str(args.fold) + '.npz'
+save_embedding(emb_save_dir, emb_save_file, emb_train.detach(), emb_test.detach())
 
 print("Done")
+labels_train = dataset.train["ernp"]
+labels_test = dataset.test["ernp"]
 
-'''
+accsTest = []
+accsTrain =[]
+tot = 0
+
 for _ in range(50):
-    log = LogReg(hid_units, nb_classes)
-    opt = torch.optim.Adam(log.parameters(), lr=0.01, weight_decay=0.0)
-    log.cuda()
+    rf = SVC(C=1.5, kernel='rbf', random_state=42, gamma='auto')
+    rf.fit(emb_train, labels_train)
 
-    pat_steps = 0
-    best_acc = torch.zeros(1)
-    best_acc = best_acc.cuda()
-    for _ in range(100):
-        log.train()
-        opt.zero_grad()
+    x_p_classes1 = rf.predict(emb_test)
+    x_p_classes2 = rf.predict(emb_train)
 
-        logits = log(train_embs)
-        loss = xent(logits, train_lbls)
+    accTest = accuracy_score(labels_test, x_p_classes1)
+    accTrain = accuracy_score(labels_train, x_p_classes2)
 
-        loss.backward()
-        opt.step()
+    accsTest.append(accTest)
+    accsTrain.append(accTrain)
 
-    logits = log(test_embs)
-    preds = torch.argmax(logits, dim=1)
-    acc = torch.sum(preds == test_lbls).float() / test_lbls.shape[0]
-    accs.append(acc * 100)
-    print(acc)
-    tot += acc
+    tot += accTest
 
 print('Average accuracy:', tot / 50)
 
-accs = torch.stack(accs)
-print(accs.mean())
-print(accs.std())
+accsTest = np.stack(accsTest)
+print(accsTest.mean())
+print(accsTest.std())
 
-'''
+accsTrain = np.stack(accsTrain)
+print(accsTrain.mean())
+print(accsTrain.std())
+

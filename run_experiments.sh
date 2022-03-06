@@ -1,19 +1,19 @@
 #!/bin/bash
-for integ in 'Clin+mRNA' 'CNA+mRNA' 'Clin+CNA'
+for integ in 'Clin+CNA' #'CNA+mRNA' 'Clin+mRNA'
 do
-    for lsize in 16 32
+    for lsize in 32
     do
-        for distance in 'kl' #'mmd'
+        for dtype in  'ER' 'DR' 'IC' 'PAM' #whole data
         do
-            for beta in 1 #10 15 25 50 100
+            for graph_type in  'simple'
             do
-                for dtype in  'W' #whole data
+                for fold in 1 2 3 4 5
                 do
-                    for k in 20
+                    for k in 15
                     do
-                        for epochs in 1500
+                        for epochs in 500
                         do
-                            python run_infomax.py --integration=${integ}  --epochs=${epochs} --dtype=${dtype}  --ls=${lsize} --distance=${distance} --beta=${beta} --k=${k} --writedir='results'
+                            python run_infomax.py --fold=${fold} --integration=${integ}  --epochs=${epochs} --dtype=${dtype}  --ls=${lsize} --k=${k} --writedir='results'
                         done
                     done
                 done

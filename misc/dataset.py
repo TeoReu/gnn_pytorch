@@ -4,10 +4,10 @@ import glob
 import pandas as pd
 
 type_to_data = {
-    'ER': r"../data/5-fold_ERstratified",
-    'IC': r"../data/5-fold_ic10stratified",
-    'PAM': r"../data/5-fold_pam50stratified",
-    'DR': r"../data/5-fold_DRstratified",
+    'ER': r"data/5-fold_ERstratified",
+    'IC': r"data/5-fold_ic10stratified",
+    'PAM': r"data/5-fold_pam50stratified",
+    'DR': r"data/5-fold_DRstratified",
     'W': r"data",
 }
 

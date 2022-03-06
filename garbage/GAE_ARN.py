@@ -10,6 +10,7 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.nn import GAE, VGAE, GCNConv
 
+from utils import MMD
 
 
 def readSCG(address):
@@ -107,7 +108,7 @@ def train():
     loss = model.recon_loss(z, train_data.pos_edge_label_index)
 
     true_samples = torch.normal(torch.zeros(z.size()[0], out_channels), torch.ones(z.size()[0], out_channels))
-    distance = mmd(true_samples, z)
+    distance = MMD(true_samples, z)
     loss = loss + (1 / train_data.num_nodes) * distance
 
     loss.backward()
