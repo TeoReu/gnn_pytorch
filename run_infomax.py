@@ -13,6 +13,7 @@ from torch import nn
 from misc.dataset import DatasetWhole, Dataset
 from misc.helpers import normalizeRNA, save_embedding
 from models.infomax import DGI
+from models.infomax_simplex import DGIS
 from models.logreg import LogReg
 from utils import buildGraph, build_simplex
 
@@ -79,23 +80,30 @@ else:
         s2_data_test = dataset.test['rnanp']
 
 if(args.graph_type == 'simple'):
-    conc_train= torch.cat((torch.from_numpy(s1_data_train), torch.from_numpy(s2_data_train)), -1)
+    conc_train = torch.cat((torch.from_numpy(s1_data_train), torch.from_numpy(s2_data_train)), -1)
     conc_test = torch.cat((torch.from_numpy(s1_data_test), torch.from_numpy(s2_data_test)), -1)
     train_data = buildGraph(conc_train, args.k)
     test_data = buildGraph(conc_test, args.k)
 
 else:
-    _, data1 = buildGraph(torch.from_numpy(s1_data), args.k)
-    _, data2 = buildGraph(torch.from_numpy(s2_data), args.k)
+    train_data_1 = buildGraph(torch.from_numpy(s1_data_train), args.k)
+    train_data_2 = buildGraph(torch.from_numpy(s2_data_train), args.k)
 
-    data_split, data = build_simplex(data1, data2)
+    train_data = build_simplex(train_data_1, train_data_2)
+
+    test_data_1 = buildGraph(torch.from_numpy(s1_data_test), args.k)
+    test_data_2 = buildGraph(torch.from_numpy(s2_data_test), args.k)
+
+    test_data = build_simplex(test_data_1, test_data_2)
 
 
 
 
 num_features = train_data.num_features
-
-model = DGI(num_features, out_channels)
+if args.graph_type == 'simple':
+    model = DGI(num_features, out_channels)
+else:
+    model = DGIS(num_features, out_channels)
 b_xent = nn.BCEWithLogitsLoss()
 xent = nn.CrossEntropyLoss()
 cnt_wait = 0
@@ -164,11 +172,15 @@ print("Done")
 labels_train = dataset.train["ernp"]
 labels_test = dataset.test["ernp"]
 
+if args.graph_type == 'simplex':
+    labels_train = np.append(labels_train, labels_train)
+    labels_test = np.append(labels_test, labels_test)
+
 accsTest = []
 accsTrain =[]
 tot = 0
 
-for _ in range(50):
+for _ in range(2):
     rf = SVC(C=1.5, kernel='rbf', random_state=42, gamma='auto')
     rf.fit(emb_train, labels_train)
 
@@ -183,7 +195,7 @@ for _ in range(50):
 
     tot += accTest
 
-print('Average accuracy:', tot / 50)
+print('Average accuracy:', tot / 2)
 
 accsTest = np.stack(accsTest)
 print(accsTest.mean())

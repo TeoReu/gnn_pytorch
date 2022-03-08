@@ -37,7 +37,6 @@ dataset = DatasetWhole('W')
 
 print('TRAINING on the complete data')
 
-dataset = DatasetWhole('W')
 
 if args.integration == 'Clin+mRNA':  # integrate Clin+mRNA
     s1_train = dataset.train['clin']

@@ -57,8 +57,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--integration', help='Type of integration Clin+mRNA, CNA+mRNA or Clin+CNA. Default is Clin+mRNA.',
                     type=str, required=True, default='Clin+mRNA')
 parser.add_argument('--dtype', help='The type of data (Pam50, Pam50C, IC, ER). Default is ER.', type=str, default='W')
+parser.add_argument('--model_type', help='The type of data the model', type=str, default='simple')
+
 parser.add_argument('--writedir', help='/PATH/TO/OUTPUT - Default is current dir', type=str, default='')
+parser.add_argument('--k', help='/PATH/TO/OUTPUT - Default is current dir', type=int, default=15)
+
 parser.add_argument('--resdir', help='/PATH/TO/EMBEDDINGS - Default is  results/', type=str, required=True)
+parser.add_argument('--epochs', help='/PATH/TO/EMBEDDINGS - Default is  results/', type=int, default=500)
+
 parser.add_argument('--numfolds', help='number of folds of CV-analyses, 0 indicates whole data set. Default is 5',
                     type=int, default=5)
 parser.add_argument('--model',
@@ -69,8 +75,8 @@ parser.add_argument('--tSNE',
                     type=str2bool, default=False)
 
 parser.add_argument('--NB', help='train a Naive Bayes Classifier. Default True', type=str2bool, default=True)
-parser.add_argument('--SVM', help='train a SVM Classifier. Default False', type=str2bool, default=False)
-parser.add_argument('--RF', help='train a Random Forest. Default False', type=str2bool, default=False)
+parser.add_argument('--SVM', help='train a SVM Classifier. Default False', type=str2bool, default=True)
+parser.add_argument('--RF', help='train a Random Forest. Default False', type=str2bool, default=True)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -154,16 +160,15 @@ if not os.path.exists(savedir):
 
 if args.dtype == 'W':
     for model in [args.model]:
-        for dist in ['kl']:
-            for beta in [1]:
+        for model_type in [args.model_type]:
+            for k in [15]:
                 for ls in [16,32]:
-                    for ds in [16]:
-                        model_conf = format(model.lower()) + '_LS_' + format(ls) + '_K_' + format(20) + '_' + format(
-                            dist) + '_beta_' + format(beta)  + '_epochs_' + format(1500)
+                    for epochs in [1500]:
+                        model_conf = format(model.lower()) + '_LS_' + format(ls) + '_K_' + format(args.k) + '_epochs_' + format(1500)
                         print(model_conf)
                         if not os.path.isdir(
-                                resdir + '/' + model + '_' + format(args.integration) + '_integration/' + model_conf):
-                            print(resdir + '/' + model + '_' + format(args.integration) + '_integration/' + model_conf)
+                                resdir + '/' + model + '_' + format(args.model_type) + format(args.integration) + '_integration/' + model_conf):
+                            print(resdir + '/' + model + '_' + format(args.model_type) + format(args.integration) + '_integration/' + model_conf)
                             print("suji")
                             continue
                         else:
@@ -225,121 +230,122 @@ else:
 
 if args.model != 'BENCH':
     with open(
-            savedir + '/' + format(args.model) + '_' + format(args.integration) + '_' + format(args.dtype) + '.csv',
+            savedir + '/' + format(args.model) + '_' + format(args.model_type) + '_' + format(args.integration) + '_' + format(args.dtype) + '.csv',
             'w') as f:
         for model in [args.model]:
             print("------------------------------------------------", file=f)
             print(model, file=f)
             print("------------------------------------------------", file=f)
             print(
-                "model, type_integration, regularization, beta, latent_size, dense_layer_size, NB_Train_ACC, NB_Train_ACC_std, NB_Test_ACC, NB_Test_ACC_std, SVM_Train_ACC, SVM_Train_ACC_std, SVM_Test_ACC, SVM_Test_ACC_std, RF_Train_ACC, RF_Train_ACC_std, RF_Test_ACC, RF_Test_ACC_std ",
+                "model, type_integration, latent_size, k_size, epochs, NB_Train_ACC, NB_Train_ACC_std, NB_Test_ACC, NB_Test_ACC_std, SVM_Train_ACC, SVM_Train_ACC_std, SVM_Test_ACC, SVM_Test_ACC_std, RF_Train_ACC, RF_Train_ACC_std, RF_Test_ACC, RF_Test_ACC_std ",
                 file=f)
+            for epochs in [5000]:
+                for ls in [16, 32]:
+                    for k in [15]:
 
-            for dist in ['kl']:
-                for beta in [1]:
-                    for ls in [16, 32, 64]:
-                        for k in [10, 20, 30, 60]:
+                        accsTrain_NB = []
+                        accsTest_NB = []
 
-                            accsTrain_NB = []
-                            accsTest_NB = []
+                        accsTrain_SVM = []
+                        accsTest_SVM = []
 
-                            accsTrain_SVM = []
-                            accsTest_SVM = []
+                        accsTrain_RF = []
+                        accsTest_RF = []
 
-                            accsTrain_RF = []
-                            accsTest_RF = []
+                        note = ""
 
-                            note = ""
+                        model_conf = format(model.lower()) + '_LS_' + format(ls) + '_K_' + format(15) + '_epochs_' + format(500)
 
-                            model_conf = format(model.lower()) + '_LS_' + format(ls) + '_K_' + format(20) \
-                                         + '_' + format(dist) + '_beta_' + format(beta) + '_epochs_' + format(1500)
+                        if not os.path.isdir(resdir + '/' + model + '_' + format(args.model_type) + '_' + format(args.integration) + '_integration/' + model_conf):
+                            print(resdir + '/' + model + '_' + format(args.model_type) + format(args.integration) + '_integration/' + model_conf)
+                            print('jaj')
+                            continue
+                        else:
+                            print("Analysing: " + model_conf)
+                            for fold in range(1, args.numfolds + 1):
 
-                            if not os.path.isdir(resdir + '/' + model_conf):
-                                continue
-                            else:
-                                print("Analysing: " + model_conf)
-                                for fold in range(1, args.numfolds + 1):
+                                embed = np.load(resdir + '/' + model + '_' + format(args.model_type) + '_' + format(args.integration) + '_integration/' + model_conf + '/' + format(args.dtype) + format(fold) + '.npz')
+                                emb_train = embed['emb_train']
+                                emb_test = embed['emb_test']
 
-                                    embed = np.load(resdir + '/' + model_conf + '/' + format(args.dtype) + format(
-                                        fold) + '.npz')
-                                    emb_train = embed['emb_train']
-                                    emb_test = embed['emb_test']
+                                random_state = 42
 
-                                    random_state = 42
+                                if (np.isnan(emb_train).any()):
+                                    note += "Check *ER" + format(fold) + " embeding for problems"
+                                    print(resdir + '/' + model_conf + '/' + format(args.dtype) + format(
+                                        fold) + '.npz is invalid. Consider re-training.')
+                                    continue
+                                else:
 
-                                    if (np.isnan(emb_train).any()):
-                                        note += "Check *ER" + format(fold) + " embeding for problems"
-                                        print(resdir + '/' + model_conf + '/' + format(args.dtype) + format(
-                                            fold) + '.npz is invalid. Consider re-training.')
-                                        continue
+                                    if args.NB:
+                                        nb = GaussianNB()
+                                        nb.fit(emb_train, train_labels[fold - 1])
+
+                                        x_p_classes = nb.predict(emb_train)
+                                        accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
+                                        accsTrain_NB.append(accTrain)
+
+                                        y_p_classes = nb.predict(emb_test)
+                                        accsTest_NB.append(accuracy_score(test_labels[fold - 1], y_p_classes))
                                     else:
+                                        accsTrain_NB.append(0.0)
+                                        accsTest_NB.append(0.0)
 
-                                        if args.NB:
-                                            nb = GaussianNB()
-                                            nb.fit(emb_train, train_labels[fold - 1])
+                                    if args.SVM:
+                                        svm = SVC(C=1.5, kernel='rbf', random_state=42, gamma='auto')
+                                        svm.fit(emb_train, train_labels[fold - 1])
 
-                                            x_p_classes = nb.predict(emb_train)
-                                            accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
-                                            accsTrain_NB.append(accTrain)
+                                        x_p_classes = svm.predict(emb_train)
+                                        accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
+                                        accsTrain_SVM.append(accTrain)
 
-                                            y_p_classes = nb.predict(emb_test)
-                                            accsTest_NB.append(accuracy_score(test_labels[fold - 1], y_p_classes))
-                                        else:
-                                            accsTrain_NB.append(0.0)
-                                            accsTest_NB.append(0.0)
+                                        y_p_classes = svm.predict(emb_test)
+                                        accsTest_SVM.append(accuracy_score(test_labels[fold - 1], y_p_classes))
+                                    else:
+                                        accsTrain_SVM.append(0.0)
+                                        accsTest_SVM.append(0.0)
 
-                                        if args.SVM:
-                                            svm = SVC(C=1.5, kernel='rbf', random_state=42, gamma='auto')
-                                            svm.fit(emb_train, train_labels[fold - 1])
+                                    if args.RF:
+                                        rf = RandomForestClassifier(n_estimators=50, random_state=42,
+                                                                    max_features=.5)
+                                        rf.fit(emb_train, train_labels[fold - 1])
 
-                                            x_p_classes = svm.predict(emb_train)
-                                            accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
-                                            accsTrain_SVM.append(accTrain)
+                                        x_p_classes = rf.predict(emb_train)
+                                        accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
+                                        accsTrain_RF.append(accTrain)
 
-                                            y_p_classes = svm.predict(emb_test)
-                                            accsTest_SVM.append(accuracy_score(test_labels[fold - 1], y_p_classes))
-                                        else:
-                                            accsTrain_SVM.append(0.0)
-                                            accsTest_SVM.append(0.0)
+                                        y_p_classes = rf.predict(emb_test)
+                                        accsTest_RF.append(accuracy_score(test_labels[fold - 1], y_p_classes))
+                                    else:
+                                        accsTrain_RF.append(0.0)
+                                        accsTest_RF.append(0.0)
 
-                                        if args.RF:
-                                            rf = RandomForestClassifier(n_estimators=50, random_state=42,
-                                                                        max_features=.5)
-                                            rf.fit(emb_train, train_labels[fold - 1])
+                        print(
+                            format(model) + ',' + format(args.integration) + ',' + format(ls) + ',' + format(
+                                args.k)  + ',' + format(args.epochs)
 
-                                            x_p_classes = rf.predict(emb_train)
-                                            accTrain = accuracy_score(train_labels[fold - 1], x_p_classes)
-                                            accsTrain_RF.append(accTrain)
+                            + ',' + format(np.mean(accsTrain_NB))
+                            + ',' + format(np.var(accsTrain_NB))
+                            + ',' + format(np.mean(accsTest_NB))
+                            + ',' + format(np.var(accsTest_NB))
 
-                                            y_p_classes = rf.predict(emb_test)
-                                            accsTest_RF.append(accuracy_score(test_labels[fold - 1], y_p_classes))
-                                        else:
-                                            accsTrain_RF.append(0.0)
-                                            accsTest_RF.append(0.0)
+                            + ',' + format(np.mean(accsTrain_SVM))
+                            + ',' + format(np.var(accsTrain_SVM))
+                            + ',' + format(np.mean(accsTest_SVM))
+                            + ',' + format(np.var(accsTest_SVM))
 
-                            print(
-                                format(model) + ',' + format(args.integration) + ',' + format(dist) + ',' + format(
-                                    beta) + ',' + format(ls) + ',' + format(ds)
-
-                                + ',' + format(np.mean(accsTrain_NB))
-                                + ',' + format(np.var(accsTrain_NB))
-                                + ',' + format(np.mean(accsTest_NB))
-                                + ',' + format(np.var(accsTest_NB))
-
-                                + ',' + format(np.mean(accsTrain_SVM))
-                                + ',' + format(np.var(accsTrain_SVM))
-                                + ',' + format(np.mean(accsTest_SVM))
-                                + ',' + format(np.var(accsTest_SVM))
-
-                                + ',' + format(np.mean(accsTrain_RF))
-                                + ',' + format(np.var(accsTrain_RF))
-                                + ',' + format(np.mean(accsTest_RF))
-                                + ',' + format(np.var(accsTest_RF))
-                                + note, file=f)
-                            f.flush()
-                            print('Done.')
+                            + ',' + format(np.mean(accsTrain_RF))
+                            + ',' + format(np.var(accsTrain_RF))
+                            + ',' + format(np.mean(accsTest_RF))
+                            + ',' + format(np.var(accsTest_RF))
+                            + note, file=f)
+                        f.flush()
+                        print('Done.')
     f.close()
+else:
+    raise ValueError("Not supported model: " + args.model)
 
+'''
 elif args.model == 'BENCH':
 
     with open(savedir + '/benchmarks_' + format(args.integration) + '_' + format(args.dtype) + '.csv', 'w') as fb:
@@ -505,6 +511,7 @@ elif args.model == 'BENCH':
                   , file=fb)
             fb.flush()
     fb.close()
-else:
-    raise ValueError("Not supported model: " + args.model)
+'''
+
+
 

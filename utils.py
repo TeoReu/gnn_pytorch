@@ -146,28 +146,35 @@ def buildGraph(conc_input, k):
 
 
 def build_simplex(g1, g2):
+    g1_num_ft = g1.x.shape[1]
+    g2_num_ft = g2.x.shape[1]
+
+    g_num_nodes = g1.x.shape[0]
+
     transform = T.Compose([
         T.NormalizeFeatures(),
-        T.RandomLinkSplit(num_test=0.1, is_undirected=True,
-                          split_labels=True, add_negative_train_samples=True),
     ])
-    t1 = torch.zeros(g2.x.shape)
-    t1[:, :g1.x.shape[1]] = g1.x
-    x = torch.cat((t1, g2.x), 0)
 
-    new_edge_g2 = g2.edge_index + g1.num_nodes * torch.ones(g2.edge_index.shape)
+    t = torch.zeros(2*g_num_nodes, g1_num_ft + g2_num_ft)
+    t[:g_num_nodes, :g1_num_ft] = g1.x
+    t[g_num_nodes:2 * g_num_nodes, g1_num_ft: g1_num_ft + g2_num_ft] = g2.x
+    x = t
 
-    arr = np.zeros((2,1980))
+    new_edge_g2 = g2.edge_index + g_num_nodes * torch.ones(g2.edge_index.shape)
+    print(new_edge_g2.shape)
+    arr = np.zeros((2, 2*g_num_nodes), dtype=int)
+    print(arr.shape)
 
-    for j in range(1980):
+    for j in range(g_num_nodes):
         arr[0][j] = j
-        arr[1][j] = j + 1980
+        arr[1][j] = j + g_num_nodes
 
     edge_index = torch.concat((g1.edge_index, new_edge_g2, torch.from_numpy(arr)), 1).type(torch.LongTensor)
     new_graph = torch_geometric.data.Data(x=x, edge_index=edge_index, pos=x)
-    data_split = transform(new_graph)
 
-    return data_split, new_graph
+    new_graph = transform(new_graph)
+
+    return new_graph
 
 
 def sparse_to_tuple(sparse_mx):
