@@ -4,12 +4,34 @@ import scipy.sparse as sp
 import torch
 import torch_geometric
 import torch_geometric.transforms as T
+from matplotlib import pyplot as plt
 from sklearn.metrics import roc_auc_score, average_precision_score
 import networkx as nx
 
+
 def draw_graph(data):
-    g = torch_geometric.utils.to_networkx(data, to_undirected=True)
-    nx.draw(g)
+    g = torch_geometric.utils.to_networkx(data)
+    # g.add_edges_from(data.edge_index)
+    # pretty colours: #db9cc3, #d17c62
+    node_color = '#00b4d9'
+    nx.draw_spring(g.to_undirected(reciprocal=False, as_view=False), with_labels=False, node_size=10, node_color= node_color)
+    plt.savefig("fin_report.png")
+
+def draw_graph(data, s):
+    fig = plt.figure()
+    save_dir = 'beautiful_plots'
+
+    g = torch_geometric.utils.to_networkx(data)
+    # g.add_edges_from(data.edge_index)
+    # pretty colours: #db9cc3, #d17c62
+    if s == 'rnanp':
+        node_color = '#00b4d9'
+    elif s == 'clin':
+        node_color = '#db9cc3'
+    else:
+        node_color = '#d17c62'
+    nx.draw_spring(g.to_undirected(reciprocal=False, as_view=False), with_labels=False, node_size=10, node_color= node_color)
+    fig.savefig(save_dir + '/' + s + '_graph' + '.png')
 
 
 def load_node_csv(path, encoders=None, **kwargs):
@@ -140,7 +162,7 @@ def buildGraph(conc_input, k):
 
     data = torch_geometric.data.Data(x=conc_input, edge_index=edge_index, pos=conc_input, dtype=torch.float)
 
-    #data_split = transform(data)
+    # data_split = transform(data)
 
     return data
 
@@ -155,14 +177,14 @@ def build_simplex(g1, g2):
         T.NormalizeFeatures(),
     ])
 
-    t = torch.zeros(2*g_num_nodes, g1_num_ft + g2_num_ft)
+    t = torch.zeros(2 * g_num_nodes, g1_num_ft + g2_num_ft)
     t[:g_num_nodes, :g1_num_ft] = g1.x
     t[g_num_nodes:2 * g_num_nodes, g1_num_ft: g1_num_ft + g2_num_ft] = g2.x
     x = t
 
     new_edge_g2 = g2.edge_index + g_num_nodes * torch.ones(g2.edge_index.shape)
     print(new_edge_g2.shape)
-    arr = np.zeros((2, 2*g_num_nodes), dtype=int)
+    arr = np.zeros((2, 2 * g_num_nodes), dtype=int)
     print(arr.shape)
 
     for j in range(g_num_nodes):
