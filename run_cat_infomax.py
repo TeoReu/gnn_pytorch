@@ -2,22 +2,17 @@ import argparse
 import os
 
 import numpy as np
-import pandas as pd
 import torch
-from matplotlib import pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
-from torch_geometric import nn
 from torch import nn
 from misc.dataset import DatasetWhole, Dataset
 from misc.helpers import normalizeRNA, save_embedding
-from models.infomax import DGI
-from models.infomax_simplex import DGIS
-from models.logreg import LogReg
-from utils import buildGraph, build_simplex, draw_graph
+from models.infomax_cat import DGICAT
+from utils import buildGraph, build_simplex
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--integration', help='Type of integration Clin+mRNA, CNA+mRNA or Clin+CNA', type=str,
@@ -81,33 +76,21 @@ else:
         s2_data_train = dataset.train['rnanp']
         s2_data_test = dataset.test['rnanp']
 
-if(args.graph_type == 'simple'):
-    conc_train = torch.cat((torch.from_numpy(s1_data_train), torch.from_numpy(s2_data_train)), -1)
-    conc_test = torch.cat((torch.from_numpy(s1_data_test), torch.from_numpy(s2_data_test)), -1)
-    train_data = buildGraph(conc_train, args.k)
-    test_data = buildGraph(conc_test, args.k)
-    draw_graph(train_data)
-    draw_graph(test_data)
-    plt.show()
-else:
+
+if(args.graph_type == 'cat'):
     train_data_1 = buildGraph(torch.from_numpy(s1_data_train), args.k)
     train_data_2 = buildGraph(torch.from_numpy(s2_data_train), args.k)
-
-    train_data = build_simplex(train_data_1, train_data_2)
 
     test_data_1 = buildGraph(torch.from_numpy(s1_data_test), args.k)
     test_data_2 = buildGraph(torch.from_numpy(s2_data_test), args.k)
 
-    test_data = build_simplex(test_data_1, test_data_2)
+
+num_ft_1 = train_data_1.num_features
+num_ft_2 = train_data_2.num_features
 
 
+model = DGICAT(num_ft_1, num_ft_2, out_channels)
 
-
-num_features = train_data.num_features
-if args.graph_type == 'simple':
-    model = DGI(num_features, out_channels)
-else:
-    model = DGIS(num_features, out_channels)
 b_xent = nn.BCEWithLogitsLoss()
 xent = nn.CrossEntropyLoss()
 cnt_wait = 0
@@ -115,8 +98,10 @@ cnt_wait = 0
 best = 1e9
 best_t = 0
 
-x = train_data.x
+x1 = train_data_1.x
+x2 = train_data_2.x
 
+num_nodes = train_data_1.num_nodes
 # inizialize the optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 #nb_epochs = 100
@@ -124,21 +109,26 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 for epoch in range(epochs):
     model.train()
     optimizer.zero_grad()
-    idx = np.random.permutation(train_data.num_nodes)
-    shuf_fts = x[idx, :]
+    idx1 = np.random.permutation(train_data_1.num_nodes)
+    idx2 = np.random.permutation(train_data_2.num_nodes)
 
-    if (args.graph_type == 'simple'):
-        lbl_1 = torch.ones(train_data.num_nodes, 1)
-        lbl_2 = torch.zeros(train_data.num_nodes, 1)
+    shuf_fts_1 = x1[idx1, :]
+    shuf_fts_2 = x2[idx2, :]
+
+    if (args.graph_type == 'cat'):
+        lbl_1 = torch.ones(num_nodes, 1)
+        lbl_2 = torch.zeros(num_nodes, 1)
         lbl = torch.cat((lbl_1, lbl_2), 1)
     #elif (args.graph_type == 'simplex'):
     else:
-        l_size = int(train_data.num_nodes/2)
+        l_size = int(train_data_1.num_nodes/2)
         lbl_1 = torch.ones(l_size, 1)
         lbl_2 = torch.zeros(l_size, 1)
         lbl = torch.cat((lbl_1, lbl_2), 1)
 
-    logits = model(train_data.x, shuf_fts, train_data.edge_index, None, None, None)
+#    def forward(self, seq1a, seq2a, seq1b, seq2b, edge_index1, edge_index2, msk, samp_bias1, samp_bias2):
+
+    logits = model(x1,  shuf_fts_1, x2, shuf_fts_2, train_data_1.edge_index, train_data_2.edge_index, None, None, None)
 
     loss = b_xent(logits, lbl)
 
@@ -148,7 +138,7 @@ for epoch in range(epochs):
         best = loss
         best_t = epoch
         cnt_wait = 0
-        #torch.save(model.state_dict(), 'best_dgi.pkl')
+        torch.save(model.state_dict(), 'best_dgi.pkl')
     else:
         cnt_wait += 1
 
@@ -161,12 +151,12 @@ for epoch in range(epochs):
 
 print('Loading {}th epoch'.format(best_t))
 
-#model.load_state_dict(torch.load('best_dgi.pkl'))
+model.load_state_dict(torch.load('best_dgi.pkl'))
 
 # embeds, _ = model.embed(data.x, edge_index=train_pos_edge_index)
 
-emb_train = model.embed(train_data.x, train_data.edge_index, None)
-emb_test = model.embed(test_data.x, test_data.edge_index, None)
+emb_train = model.embed(x1, x2, train_data_1.edge_index, train_data_2.edge_index, None)
+emb_test = model.embed(test_data_1.x, test_data_2.x, test_data_1.edge_index, test_data_2.edge_index, None)
 
 if args.writedir == '':
     emb_save_dir = 'results/infomax_' + format(args.graph_type) + "_" + format(args.integration) + '_integration/infomax_LS_' + format(
@@ -180,20 +170,15 @@ emb_save_file = args.dtype + str(args.fold) + '.npz'
 save_embedding(emb_save_dir, emb_save_file, emb_train.detach(), emb_test.detach())
 
 print("Done")
-labels_train = dataset.train["prnp"]
-labels_test = dataset.test["prnp"]
-
-'''
-if args.graph_type == 'simplex':
-    labels_train = np.append(labels_train, labels_train)
-    labels_test = np.append(labels_test, labels_test)
-'''
+labels_train = dataset.train["pam50np"]
+labels_test = dataset.test["pam50np"]
 
 accsTest = []
 accsTrain =[]
 tot = 0
 
-rf =  MLPClassifier(random_state=2, max_iter=300)
+rf = MLPClassifier(random_state=2, max_iter=300)
+
 rf.fit(emb_train, labels_train)
 
 x_p_classes1 = rf.predict(emb_test)
@@ -211,7 +196,9 @@ print('Average accuracy:', tot)
 
 accsTest = np.stack(accsTest)
 print(accsTest.mean())
+print(accsTest.std())
 
 accsTrain = np.stack(accsTrain)
 print(accsTrain.mean())
+print(accsTrain.std())
 
